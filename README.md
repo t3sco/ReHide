@@ -19,36 +19,46 @@ When a monitor sleeps, powers off, or briefly disconnects (OLED screensavers and
 Read the script before you run it, it's one short file. In summary:
 
 - It only calls standard Windows APIs (`SHAppBarMessage`, the same mechanism the Settings toggle uses, plus read-only checks for monitor layout and screensaver state)
-- No internet access, no downloads, nothing sent anywhere
+- The script itself makes no network connections and sends nothing anywhere (the optional one-line installer downloads it from this repo, and that's all it does)
 - No admin rights needed, no registry changes
+- `Install.cmd` and `Uninstall.cmd` are one line each, open them in Notepad to check
 - Everything it sets up is easy to find and removed with `-Uninstall`: a copy of the script in `%LOCALAPPDATA%\ReHide`, two scheduled tasks (visible in Task Scheduler) and one Start Menu shortcut
 - It runs through `conhost --headless`, a built-in Windows option that runs PowerShell without a window, so nothing flashes on screen
 - `-ExecutionPolicy Bypass` only applies to that single PowerShell run. It doesn't change your system's policy, it's just needed because Windows blocks unsigned scripts by default
 
 ## Install
 
-1. Download `Fix-Taskbar.ps1` from the [latest release](https://github.com/t3sco/ReHide/releases/latest)
-2. Open PowerShell in the folder you downloaded it to (usually Downloads) and run:
+### Option 1: double-click (easiest)
 
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File .\Fix-Taskbar.ps1 -Install
-   ```
+1. Download the zip from the [latest release](https://github.com/t3sco/ReHide/releases/latest) and unzip it
+2. Double-click **Install.cmd**. If Windows asks whether to run a downloaded file, click **Run**
 
-That's it. The script copies itself to `%LOCALAPPDATA%\ReHide`, the watcher starts straight away, and you can delete the downloaded file.
+### Option 2: one line in PowerShell
 
-> Don't double-click the script or use **Run with PowerShell**. Windows can block downloaded scripts that way, and the window closes before you can read the error.
+```powershell
+irm https://raw.githubusercontent.com/t3sco/ReHide/main/install.ps1 | iex
+```
+
+This downloads `Fix-Taskbar.ps1` from this repo and installs it. Read [install.ps1](install.ps1) first if you like, it's a few lines.
+
+Either way, the script copies itself to `%LOCALAPPDATA%\ReHide` and the watcher starts straight away. You can delete the zip afterwards.
+
+## Uninstall
+
+Double-click **Uninstall.cmd** from the zip, or run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\ReHide\Fix-Taskbar.ps1" -Uninstall
+```
 
 ## Other commands
 
 ```powershell
 # Re-apply auto-hide once, right now (or press Ctrl+Alt+B)
 powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\ReHide\Fix-Taskbar.ps1"
-
-# Remove everything -Install set up
-powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\ReHide\Fix-Taskbar.ps1" -Uninstall
 ```
 
-To update, download the new version and run `-Install` again. It replaces the old one.
+To update, install the new version the same way. It replaces the old one.
 
 ## Notes
 
