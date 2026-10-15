@@ -5,7 +5,8 @@
 
   Usage:
     .\Fix-Taskbar.ps1             Toggle auto-hide off/on now
-    .\Fix-Taskbar.ps1 -Install    Set up automatic fixing + Ctrl+Alt+B hotkey
+    .\Fix-Taskbar.ps1 -Install    Copy to %LOCALAPPDATA%\ReHide and set up
+                                  automatic fixing + Ctrl+Alt+B hotkey
     .\Fix-Taskbar.ps1 -Uninstall  Remove everything -Install set up
     .\Fix-Taskbar.ps1 -Watch      (used by the background task) watch for
                                   screensaver ending, monitors reconnecting
@@ -21,6 +22,8 @@ $TaskName     = 'Fix Taskbar Auto-hide'
 $WatcherName  = 'Fix Taskbar Auto-hide Watcher'
 $ShortcutPath = Join-Path ([Environment]::GetFolderPath('Programs')) 'Fix Taskbar.lnk'
 $Hotkey       = 'CTRL+ALT+B'
+$InstallDir   = Join-Path $env:LOCALAPPDATA 'ReHide'
+$InstalledPs1 = Join-Path $InstallDir 'Fix-Taskbar.ps1'
 
 Add-Type -TypeDefinition @"
 using System;
@@ -86,13 +89,25 @@ if ($Uninstall) {
     Unregister-ScheduledTask -TaskName $WatcherName -Confirm:$false -ErrorAction SilentlyContinue
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
     Remove-Item $ShortcutPath -ErrorAction SilentlyContinue
-    Write-Host 'Removed scheduled tasks and hotkey.'
+    Remove-Item $InstallDir -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host 'Removed scheduled tasks, hotkey and installed files.'
     return
 }
 
 if ($Install) {
-    $script = $PSCommandPath
-    $psArgs = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$script`""
+    # Stop any running watcher first, so the new one can start
+    Stop-ScheduledTask -TaskName $WatcherName -ErrorAction SilentlyContinue
+
+    # Copy this script to a fixed location so the downloaded copy can be moved or deleted
+    New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+    if ($PSCommandPath -ne $InstalledPs1) {
+        Copy-Item -LiteralPath $PSCommandPath -Destination $InstalledPs1 -Force
+    }
+    Unblock-File -LiteralPath $InstalledPs1 -ErrorAction SilentlyContinue
+
+    # conhost --headless runs PowerShell with no window at all (no flash)
+    $exe    = 'conhost.exe'
+    $psArgs = "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$InstalledPs1`""
     $user   = "$env:USERDOMAIN\$env:USERNAME"
     $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
 
@@ -107,7 +122,7 @@ if ($Install) {
     $oneShotSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
                                                     -ExecutionTimeLimit (New-TimeSpan -Minutes 1)
     Register-ScheduledTask -TaskName $TaskName `
-        -Action (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $psArgs) `
+        -Action (New-ScheduledTaskAction -Execute $exe -Argument $psArgs) `
         -Trigger $unlock -Settings $oneShotSettings -Principal $principal -Force | Out-Null
 
     # 2) Background watcher from login onwards (screensaver, monitor reconnect, sleep)
@@ -117,21 +132,21 @@ if ($Install) {
                                                   -ExecutionTimeLimit ([TimeSpan]::Zero) `
                                                   -MultipleInstances IgnoreNew
     Register-ScheduledTask -TaskName $WatcherName `
-        -Action (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "$psArgs -Watch") `
+        -Action (New-ScheduledTaskAction -Execute $exe -Argument "$psArgs -Watch") `
         -Trigger $logon -Settings $watchSettings -Principal $principal -Force | Out-Null
     Start-ScheduledTask -TaskName $WatcherName
 
     # 3) Start Menu shortcut with a global hotkey
     $shell = New-Object -ComObject WScript.Shell
     $lnk = $shell.CreateShortcut($ShortcutPath)
-    $lnk.TargetPath  = 'powershell.exe'
+    $lnk.TargetPath  = $exe
     $lnk.Arguments   = $psArgs
     $lnk.WindowStyle = 7     # minimised
     $lnk.Hotkey      = $Hotkey
     $lnk.Description = 'Re-apply taskbar auto-hide'
     $lnk.Save()
 
-    Write-Host "Installed. Watcher is running now and starts at every login. $Hotkey still works as a manual fix."
+    Write-Host "Installed to $InstallDir. The watcher is running and starts at every login. $Hotkey re-applies auto-hide manually. You can delete the downloaded copy."
     return
 }
 
